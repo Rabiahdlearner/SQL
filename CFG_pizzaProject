@@ -1,0 +1,161 @@
+/*this project will make use of Pizza sales dataset, which is available 
+to the public found on Kaggle website  it coists of 48620 rows and 12 colum, 
+and is divided into five tables namely: 
+1. features
+2. order
+3. Price
+4. ingredients
+5. November Sales
+ to fulfill this requirement of this project as well as provide clarity for potential
+ users of the dataset. Hence the name of the Database for this table will be call "Pizza"
+  */
+CREATE DATABASE pizza;
+USE pizza;
+
+/*Since I import my csv file as table it is essential I assess the structure of the table*/
+DESCRIBE pizza.pizzaSales;
+
+/* I will like to view a few rows from the table to see how well it imports*/
+ SELECT * FROM pizzaSales
+	WHERE order_date LIKE '%10/2015%';
+ALTER TABLE pizzaSales
+	DROP COLUMN MyUnknownColumn;
+
+SELECT * FROM pizzaSales
+	LIMIT 2;   -- this limits the view to 2 rows
+    
+/* I will create 5 tables from this table for ease */
+-- 1. Features: Every thing that explai the pizza itself
+CREATE TABLE features
+SELECT pizza_id, pizza_name_id, pizza_size, pizza_category
+FROM pizzaSales;
+
+/*Assessing Features*/
+SELECT * FROM features
+	WHERE pizza_id like '%85%';
+
+/*Adding keys to feature, since I forgot when creating it*/
+ALTER TABLE features
+	ADD PRIMARY KEY (pizza_id);
+    
+    
+-- 2. orders    
+CREATE TABLE orders
+	SELECT pizza_id, pizza_name_id, pizza_category, quantity, STR_TO_DATE(order_date, '%d/%m/%Y') AS order_date,
+		   order_time, total_price
+	  FROM pizzaSales;
+
+/*throwing error when adding foreign so 
+i want to try it after creating the table*/
+ALTER TABLE orders	
+	ADD FOREIGN KEY features (pizza_id)
+		REFERENCES features (pizza_id);
+
+describe pizza.orders;
+-- DROP TABLE orders;
+
+
+-- 3. Prices
+CREATE TABLE price
+	  SELECT pizza_id, pizza_category, quantity, unit_price, total_price
+        FROM pizzaSales;
+
+ALTER TABLE price
+	ADD PRIMARY KEY features (pizza_id), 
+    ADD FOREIGN KEY orders (pizza_category) REFERENCES orders (pizza_category);
+
+-- 4. Ingredients
+CREATE TABLE ingredients
+	SELECT pizza_id, pizza_category, pizza_ingredients AS pizza_ing
+    FROM pizzaSales;
+    
+ALTER TABLE ingredients
+    ADD FOREIGN KEY features (pizza_id) REFERENCES features (pizza_id);
+
+-- 5. Total sales in December, 2015
+
+CREATE TABLE nov_sales 
+SELECT  STR_TO_DATE(order_date, '%d/%m/%Y') AS order_date, pizza_id, pizza_category,
+        order_time, quantity, total_price
+        FROM pizzaSales;
+		-- WHERE order_date LIKE '%/11/2015%';
+ SELECT  *FROM nov_sales; -- DATE -- (order_date)='29/11/2015'       
+ -- drop table nov_sales; 
+  
+  ALTER TABLE nov_sales
+	 ADD FOREIGN KEY (pizza_id) REFERENCES  features (pizza_id);
+
+-- describe pizza.nov_sales;
+
+-- Total quantity of different type pizza sold on black friday
+
+/*Check: All five tables created; All tables have FOREIGN KEY and REFERENCE; 
+only feature has PRIMARY KEY; VIEW created; INNER JOIN was used for black friday dayb4 and after;
+stored FUNCTION proportion was created;   */
+
+CREATE VIEW blkfri AS
+SELECT pizza_category, COUNT(quantity) as blackfriday_qty  
+	    FROM nov_sales 
+	   WHERE DATE(order_date) = '2015-11-29'
+       GROUP BY pizza_category;
+
+-- Quantity of pizza sold on a day before blackfriday 
+CREATE VIEW b4_blkfri AS
+   SELECT pizza_category, COUNT(quantity) AS dayb4_qty  
+   FROM nov_sales 
+   WHERE DATE(order_date) = '2015-11-28' 
+   GROUP BY pizza_category;
+
+-- Quantity of pizza sold a day after blackfriday   
+CREATE VIEW aft_blkfri AS
+SELECT pizza_category, COUNT(quantity) AS dayaft_qty  
+  FROM nov_sales 
+  WHERE DATE(order_date) = '2015-11-30' 
+  GROUP BY pizza_category;
+
+-- Comparing the quantity sold on black friday and the day before and after, 
+ SELECT * FROM b4_blkfri
+  INNER JOIN blkfri USING (pizza_category)
+ INNER JOIN  aft_blkfri USING (pizza_category);
+ 
+-- What is the best selling pizza type
+SELECT pizza_category, MAX(quantity) AS quantity, MONTH(order_date) AS order_month
+	FROM orders
+    GROUP BY pizza_category, MONTH(order_date) = order_month;
+    
+    
+    -- Since quantitity of pizza is not necessarily the highest on black friday, 
+-- I want to know the average quantity of pizza sold per month
+SELECT pizza_category, AVG(total_price) AS avg_price, MONTH(order_date) 
+	FROM orders 
+    GROUP BY pizza_category, MONTH(order_date);
+
+/*Cretating function to calculate proportion of pizza sold*/    
+ DELIMITER //
+ 
+ CREATE FUNCTION percentage(quantity DECIMAL(5, 3))
+ RETURNS DECIMAL(5, 3)
+ NO SQL
+ BEGIN
+	RETURN (quantity / 48620) * 100;
+END//
+
+DELIMITER ;
+SELECT  o.pizza_category, percentage(o.quantity) AS pizza_prop,
+		MONTH(o.order_date)
+        FROM orders AS o
+        GROUP BY o.pizza_category, MONTH(order_date);
+
+/*Peak order time for pizza per month; This is just to use subquery: this tells us the peak month and the time when that 
+peak order occur*/
+SELECT o.pizza_name_id, o.order_time, MONTH(o.order_date) AS peak_month, DAY(o.order_date) AS peak_day
+	FROM orders AS o
+    WHERE o.quantity = (SELECT MAX(`or`.quantity) FROM orders AS `or`)
+	GROUP BY MONTH(order_date);
+    
+/*Trying out something shorter without subquery: This tells us the peak time for each month*/
+SELECT pizza_name_id, MAX(quantity), order_time AS peak_time, MONTH(order_date) as peak_month
+	FROM orders 
+    GROUP BY  MONTH(order_date);
+    
+/*I will update with stored procedure, trigger, event after the presentation*/
